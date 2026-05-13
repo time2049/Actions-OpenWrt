@@ -1,18 +1,19 @@
 #!/bin/bash
-
-# 修改默认管理 IP
 sed -i 's/192.168.1.1/10.1.1.1/g' package/base-files/files/bin/config_generate
-
-# 强制分区大小（确保 .config 中已设置，但为防被覆盖）
-sed -i 's/CONFIG_TARGET_KERNEL_PARTSIZE=.*/CONFIG_TARGET_KERNEL_PARTSIZE=256/' .config
-sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=2048/' .config
-
-# 确保 OpenClash 和 PassWall 已选中（如果 .config 没有，则追加）
-for pkg in luci-app-openclash luci-app-passwall; do
-    if ! grep -q "CONFIG_PACKAGE_${pkg}=y" .config; then
-        echo "CONFIG_PACKAGE_${pkg}=y" >> .config
-    fi
-done
-
-# 运行 defconfig 使配置生效
+cat >> .config <<EOF
+CONFIG_TARGET_x86=y
+CONFIG_TARGET_x86_64=y
+CONFIG_TARGET_x86_64_DEVICE_generic=y
+CONFIG_TARGET_KERNEL_PARTSIZE=256
+CONFIG_TARGET_ROOTFS_PARTSIZE=2048
+CONFIG_TARGET_ROOTFS_EXT4FS=y
+CONFIG_GRUB_EFI_IMAGES=y
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-theme-argon=y
+CONFIG_PACKAGE_luci-app-argon-config=y
+CONFIG_PACKAGE_miniupnpd=y
+CONFIG_PACKAGE_luci-app-upnp=y
+CONFIG_PACKAGE_luci-app-openclash=y
+CONFIG_PACKAGE_luci-app-passwall=y
+EOF
 make defconfig
