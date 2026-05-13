@@ -16,11 +16,15 @@ on:
   repository_dispatch:
   workflow_dispatch:
 
+# 赋予工作流对仓库内容的写入权限（创建 Release 必需）
+permissions:
+  contents: write
+
 env:
   # 要编译的 OpenWrt 源码仓库地址（官方原版）
   REPO_URL: https://github.com/openwrt/openwrt
-  # 使用的分支（24.10 稳定版）
-  REPO_BRANCH: openwrt-24.10
+  # 使用的分支（main 为最新开发版；如需稳定版可改为 openwrt-24.10）
+  REPO_BRANCH: main
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
