@@ -4,7 +4,6 @@
 sed -i 's/192.168.1.1/10.1.1.1/g' package/base-files/files/bin/config_generate
 
 # ==================== 2. 设置 Argon 为默认主题 ====================
-# 批量修改 luci 集合包的依赖，将 bootstrap 替换为 argon
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci-light/Makefile
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci-nginx/Makefile
@@ -63,5 +62,13 @@ update_go_package "sing-box" "SagerNet/sing-box"
 update_go_package "hysteria" "apernet/hysteria"
 update_openclash
 
-# ==================== 6. 使所有配置生效 ====================
+# ==================== 6. 添加 CPU 温度显示（x86） ====================
+# 确保安装 coretemp 内核模块
+echo 'CONFIG_PACKAGE_kmod-coretemp=y' >> .config
+
+# 复制自定义的 index.htm（你已放在仓库 files/usr/lib/lua/luci/view/admin_status/index.htm）
+cp -f $GITHUB_WORKSPACE/files/usr/lib/lua/luci/view/admin_status/index.htm \
+      feeds/luci/modules/luci-mod-status/luasrc/view/admin_status/index.htm
+
+# ==================== 7. 使所有配置生效 ====================
 make defconfig
