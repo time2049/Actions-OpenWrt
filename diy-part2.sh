@@ -41,30 +41,10 @@ update_go_package() {
     fi
 }
 
-# 可选：自动更新 OpenClash（如果需要，请取消注释并确认路径）
-# 注意：OpenClash 的 Makefile 路径通常是 feeds/openclash/luci-app-openclash/Makefile
-# 暂时注释掉以避免文件不存在的错误
-# update_openclash() {
-#     local makefile_path="feeds/openclash/luci-app-openclash/Makefile"
-#     [ -f "$makefile_path" ] || { echo "⚠️ 跳过 OpenClash（文件不存在）"; return 1; }
-#     echo "🔄 正在更新 OpenClash ..."
-#     local latest_version=$(get_latest_tag "vernesong/OpenClash")
-#     [ -z "$latest_version" ] && { echo "❌ 获取 OpenClash 版本失败"; return 1; }
-#     local current_version=$(grep 'PKG_VERSION:=' "$makefile_path" | cut -d'=' -f2)
-#     if [ "$latest_version" != "$current_version" ]; then
-#         echo "   版本更新: $current_version → $latest_version"
-#         sed -i "s|PKG_VERSION:=.*|PKG_VERSION:=$latest_version|g" "$makefile_path"
-#         sed -i '/PKG_HASH:=/d' "$makefile_path"
-#     else
-#         echo "   已是最新: $latest_version"
-#     fi
-# }
-
 # 执行 PassWall 依赖的更新
 update_go_package "xray" "XTLS/Xray-core"
 update_go_package "sing-box" "SagerNet/sing-box"
 update_go_package "hysteria" "apernet/hysteria"
-# update_openclash   # 默认禁用，如需启用请取消注释并确保路径正确
 
 # ==================== 6. 添加 CPU 温度显示（x86） ====================
 # 确保安装 coretemp 内核模块
