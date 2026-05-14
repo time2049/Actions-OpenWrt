@@ -4,7 +4,6 @@
 sed -i 's/192.168.1.1/10.1.1.1/g' package/base-files/files/bin/config_generate
 
 # ==================== 2. 固化默认语言和 Argon 主题（重置不丢失）====================
-# 直接创建最终的 /etc/config/luci 配置文件
 mkdir -p package/base-files/files/etc/config
 cat << 'EOF' > package/base-files/files/etc/config/luci
 config core 'main'
@@ -46,13 +45,12 @@ update_go_package "xray-core" "XTLS/Xray-core"
 update_go_package "sing-box" "SagerNet/sing-box"
 update_go_package "hysteria" "apernet/hysteria"
 
-# ==================== 4. 添加 CPU 温度显示（J1900 等 x86 设备）====================
-# 强制编译 coretemp 内核模块
+# ==================== 4. 添加 CPU 温度显示（x86） ====================
 echo 'CONFIG_PACKAGE_kmod-coretemp=y' >> .config
 echo 'CONFIG_PACKAGE_kmod-it87=y' >> .config
 echo 'CONFIG_PACKAGE_lm-sensors=y' >> .config
 
-# 创建模块自动加载文件（确保重启后 coretemp 生效）
+# 创建模块自动加载文件
 mkdir -p package/base-files/files/etc/modules.d
 echo "coretemp" > package/base-files/files/etc/modules.d/coretemp
 
