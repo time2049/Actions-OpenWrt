@@ -4,6 +4,9 @@
 name: OpenWrt 云编译 (J1900 毕业版)
 
 on:
+  push:
+    branches:
+      - main  # 只要往 main 分支提交代码就自动触发编译
   repository_dispatch:
   workflow_dispatch:
 
