@@ -135,15 +135,23 @@ jobs:
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
 
-      - name: 14. 发送电报通知
-        if: env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID && !cancelled()
+      - name: 14. 发送成功通知 🚀
+        if: steps.compile.outputs.status == 'success' && env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID && !cancelled()
         run: |
           curl -s "https://api.telegram.org/bot${{ env.TELEGRAM_TOKEN }}/sendMessage" \
           -d "chat_id=${{ env.TELEGRAM_CHAT_ID }}" \
           -d "parse_mode=HTML" \
-          -d "text=<b>📦 OpenWrt 编译完成！</b>%0A%0A<b>设备：</b>J1900${{ env.DEVICE_NAME }}%0A<b>时间：</b>$(date +'%Y-%m-%d %H:%M:%S')%0A<b>管理IP：</b>10.1.1.1%0A%0A🎉 固件已上传至 Release。"
+          -d "text=<b>✅ OpenWrt 编译成功！</b>%0A%0A<b>🛠 编译设备：</b> J1900 ${{ env.DEVICE_NAME }}%0A<b>📅 结束时间：</b> $(date +'%Y-%m-%d %H:%M:%S')%0A<b>🌐 默认地址：</b> 10.1.1.1%0A<b>👤 默认用户：</b> root%0A<b>🔑 默认密码：</b> none%0A%0A🎉 固件已打包上传至 Release，请及时前往下载。"
 
-      - name: 15. 清理 Releases
+      - name: 15. 发送失败通知 ❌
+        if: failure() && env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID
+        run: |
+          curl -s "https://api.telegram.org/bot${{ env.TELEGRAM_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ env.TELEGRAM_CHAT_ID }}" \
+          -d "parse_mode=HTML" \
+          -d "text=<b>⚠️ OpenWrt 编译失败！</b>%0A%0A<b>🛠 编译设备：</b> J1900 ${{ env.DEVICE_NAME }}%0A<b>⏰ 失败时间：</b> $(date +'%Y-%m-%d %H:%M:%S')%0A%0A❌ 编译过程由于某些错误已中断，请登录 GitHub Actions 查看具体日志定位问题。"
+
+      - name: 16. 清理 Releases
         uses: dev-drprasad/delete-older-releases@v0.2.1
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         with:
