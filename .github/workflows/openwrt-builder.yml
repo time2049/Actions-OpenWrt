@@ -4,12 +4,12 @@
 name: OpenWrt 云编译 (J1900 毕业版)
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - main  # 往 main 分支推代码即触发
+      - main
   schedule:
-    - cron: '0 16 * * *'  # 北京时间 每天凌晨 0:00 自动编译
-  workflow_dispatch:      # 允许手动按钮触发
+    - cron: '0 16 * * *'
 
 permissions:
   contents: write
@@ -58,16 +58,13 @@ jobs:
           echo "========= 编译服务器硬件详情 ========="
           lscpu | grep "Model name"
           echo "CPU 核心数: $(nproc)"
-          echo "内存总大小:"
           free -h
-          echo "磁盘剩余空间:"
           df -hT $PWD
           echo "===================================="
 
       - name: 4. 克隆源码
         working-directory: /workdir
         run: |
-          df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
