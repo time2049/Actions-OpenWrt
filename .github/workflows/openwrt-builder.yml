@@ -4,12 +4,9 @@
 name: OpenWrt 云编译 (J1900 毕业版)
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+  workflow_dispatch:      # 允许手动按钮触发
   schedule:
-    - cron: '0 16 * * *'
+    - cron: '0 16 * * *'  # 北京时间 每天凌晨 0:00 自动编译
 
 permissions:
   contents: write
