@@ -4,11 +4,10 @@
 name: OpenWrt 云编译 (J1900 毕业版)
 
 on:
-  push:
-    branches:
-      - main  # 只要往 main 分支提交代码就自动触发编译
+  schedule:
+    - cron: '0 16 * * *'  # 对应北京时间每天 0:00 自动触发
+  workflow_dispatch:      # 保留手动触发按钮
   repository_dispatch:
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -41,7 +40,6 @@ jobs:
         run: |
           sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
-          # 清理大文件，腾出空间给 Master 分支巨大的编译产物
           sudo rm -rf /usr/local/share/boost /usr/lib/x86_64-linux-gnu/openblas
           sudo apt-get update
           sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
@@ -85,8 +83,7 @@ jobs:
         run: |
           cd openwrt
           ./scripts/feeds install -a
-          # 二次安装确保所有插件及其依赖包（如 Ruby）索引刷新成功
-          ./scripts/feeds install -a
+          ./scripts/feeds install -a # 二次安装确保依赖包索引刷新
 
       - name: 8. 加载自定义配置 (diy-part2)
         run: |
