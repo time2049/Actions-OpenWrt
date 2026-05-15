@@ -17,28 +17,22 @@ config internal 'themes'
 EOF
 
 # ==================== 3. 核心依赖补全与错误剔除 ====================
-# 针对 0_build.txt 中的错误精准修复
+# 这里直接解决你日志中的核心报错
 cat << 'EOF' >> .config
-# 补全 kmod-ppp 依赖（解决 PassWall 编译报错的核心）
+# 补全 PassWall 必需的 PPP 内核模块 (解决 0_build.txt 中的关键报错)
 CONFIG_PACKAGE_kmod-ppp=y
 CONFIG_PACKAGE_kmod-pppox=y
 CONFIG_PACKAGE_kmod-pppoe=y
 CONFIG_PACKAGE_kmod-pppol2tp=y
 
-# 彻底禁用导致路径访问报错的 Ruby 及其组件（精简版不需要）
+# 彻底禁用导致路径访问报错的 Ruby 及其组件 (精简版不需要)
 # CONFIG_PACKAGE_ruby is not set
 # CONFIG_PACKAGE_ruby-bigdecimal is not set
 
-# 禁用有冲突且不需要的边缘插件
+# 禁用有冲突的边缘插件
 # CONFIG_PACKAGE_onionshare-cli is not set
 
-# 确保 Argon 相关包及中文语言选中
-CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-CONFIG_PACKAGE_luci-theme-argon=y
-CONFIG_PACKAGE_luci-app-argon-config=y
-CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn=y
-
-# J1900 CPU 温度显示内核支持
+# 补全 J1900 温度显示所需的内核模块
 CONFIG_PACKAGE_kmod-coretemp=y
 CONFIG_PACKAGE_kmod-it87=y
 CONFIG_PACKAGE_lm-sensors=y
@@ -62,10 +56,6 @@ update_go_package "xray-core" "XTLS/Xray-core"
 update_go_package "sing-box" "SagerNet/sing-box"
 update_go_package "hysteria" "apernet/hysteria"
 
-# ==================== 5. 刷新配置 ====================
-# 自动加载 CPU 温度模块
-mkdir -p package/base-files/files/etc/modules.d
-echo "coretemp" > package/base-files/files/etc/modules.d/coretemp
-
-# 强制刷新配置，补全所有关联依赖
+# ==================== 5. 刷新配置 (非常重要) ====================
+# 这步会根据上面新加的 y 选项自动补全所有关联依赖，确保 .config 文件生效
 make defconfig
