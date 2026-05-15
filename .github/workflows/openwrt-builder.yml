@@ -5,8 +5,6 @@ name: OpenWrt 云编译 (J1900 毕业版)
 
 on:
   workflow_dispatch:      # 允许手动按钮触发
-  schedule:
-    - cron: '0 16 * * *'  # 北京时间 每天凌晨 0:00 自动编译
 
 permissions:
   contents: write
@@ -144,17 +142,21 @@ jobs:
       - name: 14. 发布固件至 Releases
         uses: softprops/action-gh-release@v1
         if: steps.tag.outputs.status == 'success' && !cancelled()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 15. 发送通知 🚀
         if: !cancelled() && env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID
         run: |
-          STATUS="${{ steps.compile.outputs.status == 'success' && '✅ 编译成功' || '❌ 编译失败' }}"
+          if [ "${{ steps.compile.outputs.status }}" = "success" ]; then
+            STATUS="✅ 编译成功"
+          else
+            STATUS="❌ 编译失败"
+          fi
           curl -s "https://api.telegram.org/bot${{ env.TELEGRAM_TOKEN }}/sendMessage" \
           -d "chat_id=${{ env.TELEGRAM_CHAT_ID }}" \
           -d "parse_mode=HTML" \
