@@ -5,6 +5,8 @@ name: OpenWrt 云编译 (J1900 毕业版)
 
 on:
   workflow_dispatch:      # 允许手动按钮触发
+  schedule:
+    - cron: '0 16 * * *'  # 每天北京时间 00:00 自动运行 (UTC 16:00)
 
 permissions:
   contents: write
@@ -29,7 +31,7 @@ jobs:
 
     steps:
       - name: 1. 检出代码
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
 
       - name: 2. 初始化编译环境
         env:
@@ -87,6 +89,14 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
+      - name: 8.5 挂载 ccache 编译缓存机制 ⚡
+        uses: actions/cache@v4
+        with:
+          path: /workdir/openwrt/.ccache
+          key: openwrt-ccache-j1900-${{ hashFiles('openwrt/.config') }}
+          restore-keys: |
+            openwrt-ccache-j1900-
+
       - name: 9. 下载软件包
         id: package
         run: |
@@ -100,6 +110,17 @@ jobs:
         id: compile
         run: |
           cd openwrt
+          
+          # 激活并配置配置 ccache 环境变量
+          export DEFAULT_SUBTARGET="generic"
+          export TOPDIR="/workdir/openwrt"
+          export CCACHE_DIR="$TOPDIR/.ccache"
+          export PATH="/usr/lib/ccache:$PATH"
+          
+          # 让 OpenWrt 源码里的配置识别 ccache
+          sed -i 's/CONFIG_CCACHE=n/CONFIG_CCACHE=y/g' .config 2>/dev/null || true
+          echo "CONFIG_CCACHE=y" >> .config
+          
           echo -e "$(nproc) 线程 开始编译"
           make -j$(nproc) || make -j1 || make -j1 V=s
           if [ $? -eq 0 ]; then
@@ -122,7 +143,7 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 12. 上传固件到 Artifacts
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         if: steps.organize.outputs.status == 'success' && !cancelled()
         with:
           name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -140,7 +161,7 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 14. 发布固件至 Releases
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: steps.tag.outputs.status == 'success' && !cancelled()
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
@@ -163,7 +184,7 @@ jobs:
           -d "text=<b>${STATUS}！</b>%0A%0A<b>💻 编译服务器：</b> ${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)%0A<b>🛠 编译设备：</b> J1900%0A<b>🌐 默认地址：</b> 10.1.1.1%0A<b>📅 结束时间：</b> $(date +'%Y-%m-%d %H:%M:%S')"
 
       - name: 16. 清理旧的 Releases
-        uses: dev-drprasad/delete-older-releases@v0.2.1
+        uses: dev-drprasad/delete-older-releases@v0.3.4
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         with:
           keep_latest: 3
