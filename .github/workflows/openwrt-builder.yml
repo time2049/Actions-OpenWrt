@@ -7,7 +7,7 @@ name: OpenWrt 云编译 (J1900 毕业版)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 16 * * *'
+    - cron: '0 16 * * *'  # 每天北京时间 00:00 自动运行
 
 permissions:
   contents: write
@@ -45,41 +45,20 @@ jobs:
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           sudo rm -rf /usr/local/share/boost
           sudo rm -rf /usr/lib/x86_64-linux-gnu/openblas
-
           sudo docker image prune --all --force
-
           sudo apt-get update
-
-          sudo apt-get install -y \
-          ack antlr3 asciidoc autoconf automake autopoint \
-          binutils bison build-essential bzip2 ccache cmake \
-          cpio curl device-tree-compiler fastjar flex gawk \
-          gettext gcc-multilib g++-multilib git gperf haveged \
-          help2man intltool libc6-dev-i386 libelf-dev \
-          libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-          libmpc-dev libmpfr-dev libncurses5-dev \
-          libncursesw5-dev libpython3-dev libreadline-dev \
-          libssl-dev libtool lrzsz mkisofs msmtp ninja-build \
-          p7zip p7zip-full patch pkgconf python3 \
-          python3-pyelftools python3-setuptools qemu-utils \
-          rsync scons squashfs-tools subversion swig texinfo \
-          uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
           sudo apt-get autoremove -y --purge
           sudo apt-get clean
-
           sudo timedatectl set-timezone "$TZ"
-
           sudo mkdir -p /workdir
           sudo chown $USER:$USER /workdir
-
           df -h
 
       - name: 3. 获取服务器环境信息 (GitHub Runner)
         run: |
           echo "SERVER_CPU_MODEL=$(lscpu | grep 'Model name' | cut -f2 -d: | sed 's/^ //g')" >> $GITHUB_ENV
           echo "SERVER_CORES=$(nproc)" >> $GITHUB_ENV
-
           echo "========= 编译服务器硬件详情 ========="
           lscpu | grep "Model name"
           echo "CPU 核心数: $(nproc)"
@@ -96,11 +75,8 @@ jobs:
       - name: 5. 加载自定义 feeds (diy-part1)
         run: |
           [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-
           chmod +x $DIY_P1_SH
-
           cd openwrt
-
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
       - name: 6. 更新 feeds
@@ -111,19 +87,14 @@ jobs:
       - name: 7. 安装 feeds
         run: |
           cd openwrt
-
-          ./scripts/feeds install -a
           ./scripts/feeds install -a
 
       - name: 8. 加载自定义配置 (diy-part2)
         run: |
           [ -e files ] && mv files openwrt/files
           [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-
           chmod +x $DIY_P2_SH
-
           cd openwrt
-
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
       - name: 8.5 挂载 ccache 编译缓存机制 ⚡
@@ -138,11 +109,8 @@ jobs:
         id: package
         run: |
           cd openwrt
-
           make defconfig
-
           make download -j8
-
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
@@ -150,18 +118,14 @@ jobs:
         id: compile
         run: |
           cd openwrt
-
           export DEFAULT_SUBTARGET="generic"
           export TOPDIR="/workdir/openwrt"
           export CCACHE_DIR="$TOPDIR/.ccache"
           export PATH="/usr/lib/ccache:$PATH"
-
           sed -i 's/CONFIG_CCACHE=n/CONFIG_CCACHE=y/g' .config 2>/dev/null || true
-
           grep -q '^CONFIG_CCACHE=y' .config || echo 'CONFIG_CCACHE=y' >> .config
-
           echo -e "$(nproc) 线程 开始编译"
-
+          
           if make -j$(nproc); then
             echo "高速编译成功"
           elif make -j1; then
@@ -172,13 +136,10 @@ jobs:
             echo "编译失败"
             exit 1
           fi
-
+          
           echo "status=success" >> $GITHUB_OUTPUT
-
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: 11. 整理固件文件
@@ -186,11 +147,8 @@ jobs:
         if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
           cd openwrt/bin/targets/*/*
-
           rm -rf packages
-
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 12. 上传固件到 Artifacts
@@ -205,13 +163,10 @@ jobs:
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
           echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-
           touch release.txt
-
           echo "J1900 毕业精简版固件 (OpenWrt Main)" >> release.txt
           echo "默认后台地址: 10.1.1.1" >> release.txt
           echo "云端编译环境: ${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)" >> release.txt
-
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 14. 发布固件至 Releases
@@ -227,19 +182,20 @@ jobs:
       - name: 15. Telegram 通知 🚀
         if: always()
         run: |
-          if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-
+          if [ -n "${{ env.TELEGRAM_TOKEN }}" ] && [ -n "${{ env.TELEGRAM_CHAT_ID }}" ]; then
             if [ "${{ steps.compile.outputs.status }}" = "success" ]; then
               STATUS="✅ 编译成功"
             else
               STATUS="❌ 编译失败"
             fi
-
-            curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-            -d "chat_id=${TELEGRAM_CHAT_ID}" \
-            -d "parse_mode=HTML" \
-            -d "text=<b>${STATUS}</b>%0A%0A<b>💻 编译服务器：</b> ${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)%0A<b>🛠 编译设备：</b> J1900%0A<b>🌐 默认地址：</b> 10.1.1.1%0A<b>📅 结束时间：</b> $(date +'%Y-%m-%d %H:%M:%S')"
-
+            
+            # 使用标准的 URLEncode 换行符 %0A 构建整洁的通知文本
+            TEXT="${STATUS}%0A%0A💻 <b>编译服务器：</b>${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)%0A🛠 <b>编译设备：</b>J1900 毕业版%0A🌐 <b>默认地址：</b>10.1.1.1%0A📅 <b>结束时间：</b>$(date +'%Y-%m-%d %H:%M:%S')"
+            
+            curl -s -X POST "https://api.telegram.org/bot${{ env.TELEGRAM_TOKEN }}/sendMessage" \
+              -d "chat_id=${{ env.TELEGRAM_CHAT_ID }}" \
+              -d "parse_mode=HTML" \
+              -d "text=${TEXT}"
           fi
 
       - name: 16. 清理旧 Releases
@@ -250,4 +206,3 @@ jobs:
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
