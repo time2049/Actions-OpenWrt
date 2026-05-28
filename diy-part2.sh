@@ -66,3 +66,4 @@ update_go_package "hysteria" "apernet/hysteria"
 ./scripts/feeds install -a
 
 echo "✅ diy-part2.sh 执行完毕。"
+ 
