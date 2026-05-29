@@ -2,7 +2,7 @@
 # https://github.com/P3TERX/Actions-OpenWrt
 #
 
-name: OpenWrt 云编译 (J1900 毕业版)
+name: OpenWrt 云编译 (J1900 毕业精简版)
 
 on:
   workflow_dispatch:
@@ -101,8 +101,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /workdir/openwrt/.ccache
-          key: openwrt-ccache-j1900-${{ hashFiles('openwrt/.config') }}
+          key: openwrt-ccache-j1900-${{ env.REPO_BRANCH }}-${{ hashFiles('.config') }}
           restore-keys: |
+            openwrt-ccache-j1900-${{ env.REPO_BRANCH }}-
             openwrt-ccache-j1900-
 
       - name: 9. 下载软件包
@@ -122,6 +123,9 @@ jobs:
           export TOPDIR="/workdir/openwrt"
           export CCACHE_DIR="$TOPDIR/.ccache"
           export PATH="/usr/lib/ccache:$PATH"
+          
+          ccache -M 5G
+          
           sed -i 's/CONFIG_CCACHE=n/CONFIG_CCACHE=y/g' .config 2>/dev/null || true
           grep -q '^CONFIG_CCACHE=y' .config || echo 'CONFIG_CCACHE=y' >> .config
           echo -e "$(nproc) 线程 开始编译"
@@ -136,6 +140,8 @@ jobs:
             echo "编译失败"
             exit 1
           fi
+          
+          ccache -s
           
           echo "status=success" >> $GITHUB_OUTPUT
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
@@ -166,7 +172,7 @@ jobs:
           touch release.txt
           echo "J1900 毕业精简版固件 (OpenWrt Main)" >> release.txt
           echo "默认后台地址: 10.1.1.1" >> release.txt
-          echo "云端编译环境: ${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)" >> release.txt
+          echo "云端编译 environment: ${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)" >> release.txt
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 14. 发布固件至 Releases
@@ -181,21 +187,46 @@ jobs:
 
       - name: 15. Telegram 通知 🚀
         if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ -n "${{ env.TELEGRAM_TOKEN }}" ] && [ -n "${{ env.TELEGRAM_CHAT_ID }}" ]; then
+          if [ -n "${TELEGRAM_BOT_TOKEN}" ] && [ -n "${TELEGRAM_CHAT_ID}" ]; then
             if [ "${{ steps.compile.outputs.status }}" = "success" ]; then
               STATUS="✅ 编译成功"
             else
               STATUS="❌ 编译失败"
             fi
             
-            # 使用标准的 URLEncode 换行符 %0A 构建整洁的通知文本
-            TEXT="${STATUS}%0A%0A💻 <b>编译服务器：</b>${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)%0A🛠 <b>编译设备：</b>J1900 毕业版%0A🌐 <b>默认地址：</b>10.1.1.1%0A📅 <b>结束时间：</b>$(date +'%Y-%m-%d %H:%M:%S')"
+            if [ -f openwrt/.config ]; then
+              DEVICE=$(grep '^CONFIG_TARGET.*DEVICE.*=y' openwrt/.config | sed -r 's/.*DEVICE_(.*)=y/\1/')
+              [ -z "$DEVICE" ] && DEVICE="J1900 毕业版"
+            else
+              DEVICE="J1900 毕业版"
+            fi
             
-            curl -s -X POST "https://api.telegram.org/bot${{ env.TELEGRAM_TOKEN }}/sendMessage" \
-              -d "chat_id=${{ env.TELEGRAM_CHAT_ID }}" \
-              -d "parse_mode=HTML" \
-              -d "text=${TEXT}"
+            RELEASE_URL=""
+            if [ "${{ steps.compile.outputs.status }}" = "success" ] && [ "${{ steps.tag.outputs.status }}" = "success" ]; then
+              RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.release_tag }}"
+            fi
+            
+            # 使用变量拼接消息，完全避免 YAML 多行字符串缩进问题
+            MESSAGE="📢 *OpenWrt 自动编译通知*\n"
+            MESSAGE="${MESSAGE}⏰ 时间：$(date '+%Y-%m-%d %H:%M:%S')\n"
+            MESSAGE="${MESSAGE}🔧 状态：${STATUS}\n"
+            MESSAGE="${MESSAGE}📟 设备：${DEVICE}\n"
+            MESSAGE="${MESSAGE}📦 仓库：${{ github.repository }}\n"
+            MESSAGE="${MESSAGE}🔗 运行链接：${RUN_URL}\n"
+            if [ -n "$RELEASE_URL" ]; then
+              MESSAGE="${MESSAGE}📥 发布页面：${RELEASE_URL}\n"
+            fi
+            
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d text="${MESSAGE}" \
+              -d parse_mode="Markdown" \
+              -d disable_web_page_preview="true"
           fi
 
       - name: 16. 清理旧 Releases
