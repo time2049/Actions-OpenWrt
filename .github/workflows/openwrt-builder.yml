@@ -57,14 +57,48 @@ jobs:
 
       - name: 3. 获取服务器环境信息 (GitHub Runner)
         run: |
-          echo "SERVER_CPU_MODEL=$(lscpu | grep 'Model name' | cut -f2 -d: | sed 's/^ //g')" >> $GITHUB_ENV
-          echo "SERVER_CORES=$(nproc)" >> $GITHUB_ENV
+          SERVER_CPU_MODEL=$(lscpu | grep 'Model name' | cut -f2 -d: | sed 's/^ //g')
+          SERVER_CORES=$(nproc)
+          echo "SERVER_CPU_MODEL=$SERVER_CPU_MODEL" >> $GITHUB_ENV
+          echo "SERVER_CORES=$SERVER_CORES" >> $GITHUB_ENV
           echo "========= 编译服务器硬件详情 ========="
-          lscpu | grep "Model name"
-          echo "CPU 核心数: $(nproc)"
+          echo "CPU 型号: $SERVER_CPU_MODEL"
+          echo "CPU 核心数: $SERVER_CORES"
           free -h
           df -hT $PWD
           echo "===================================="
+
+      - name: 🚀 发送编译开始通知 (Telegram)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ env.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "${TELEGRAM_BOT_TOKEN}" ] && [ -n "${TELEGRAM_CHAT_ID}" ]; then
+            read -r -d '' MSG << 'EOF' || true
+          🚀 *OpenWrt J1900 毕业版编译开始* 🚀
+
+          📅 *时间*：$(date '+%Y-%m-%d %H:%M:%S')
+          🖥️ *编译服务器信息*：
+            • CPU：${{ env.SERVER_CPU_MODEL }}
+            • 核心数：${{ env.SERVER_CORES }}
+            • 磁盘使用：$(df -h / | awk 'NR==2 {print $4}') 可用
+
+          🔧 *源码分支*：${{ env.REPO_BRANCH }}
+          🌿 *项目仓库*：${{ github.repository }}
+
+          编译进行中，请耐心等待\.\.\.
+          EOF
+
+            JSON_PAYLOAD=$(jq -n \
+              --arg chat_id "${TELEGRAM_CHAT_ID}" \
+              --arg text "$MSG" \
+              --argjson preview false \
+              '{chat_id: $chat_id, text: $text, parse_mode: "MarkdownV2", disable_web_page_preview: $preview}')
+
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d "$JSON_PAYLOAD"
+          fi
 
       - name: 4. 克隆源码
         working-directory: /workdir
@@ -188,8 +222,8 @@ jobs:
       - name: 15. Telegram 通知 🚀
         if: always()
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ env.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -n "${TELEGRAM_BOT_TOKEN}" ] && [ -n "${TELEGRAM_CHAT_ID}" ]; then
@@ -206,27 +240,50 @@ jobs:
               DEVICE="J1900 毕业版"
             fi
             
-            RELEASE_URL=""
+            # 安全转义设备名称中的下划线或特殊字符
+            DEVICE=$(echo "$DEVICE" | sed 's/_/\\_/g' | sed 's/-/\\-/g' | sed 's/\./\\./g')
+
             if [ "${{ steps.compile.outputs.status }}" = "success" ] && [ "${{ steps.tag.outputs.status }}" = "success" ]; then
               RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.release_tag }}"
+              
+              read -r -d '' MSG << EOF || true
+            ✅ *J1900 毕业版编译成功！* ✅
+
+            📅 *完成时间*：$(date '+%Y-%m-%d %H:%M:%S')
+            📟 *目标设备*：${DEVICE}
+            📦 *项目仓库*：${{ github.repository }}
+            🌐 *管理地址*：10\.1\.1\.1
+            🔑 *默认密码*：无
+
+            🔗 [点击直达下载发布页面](${RELEASE_URL})
+            ⚠️ [点击查看详细编译日志](${RUN_URL})
+            EOF
+
+            else
+              read -r -d '' MSG << EOF || true
+            ❌ *J1900 毕业版编译失败！* ❌
+
+            📅 *失败时间*：$(date '+%Y-%m-%d %H:%M:%S')
+            📟 *目标设备*：${DEVICE}
+            📦 *项目仓库*：${{ github.repository }}
+            🔧 *失败状态*：${STATUS}
+
+            ⚠️ [点击此处紧急查看错误日志](${RUN_URL})
+            EOF
             fi
-            
-            # 使用变量拼接消息，完全避免 YAML 多行字符串缩进问题
-            MESSAGE="📢 *OpenWrt 自动编译通知*\n"
-            MESSAGE="${MESSAGE}⏰ 时间：$(date '+%Y-%m-%d %H:%M:%S')\n"
-            MESSAGE="${MESSAGE}🔧 状态：${STATUS}\n"
-            MESSAGE="${MESSAGE}📟 设备：${DEVICE}\n"
-            MESSAGE="${MESSAGE}📦 仓库：${{ github.repository }}\n"
-            MESSAGE="${MESSAGE}🔗 运行链接：${RUN_URL}\n"
-            if [ -n "$RELEASE_URL" ]; then
-              MESSAGE="${MESSAGE}📥 发布页面：${RELEASE_URL}\n"
-            fi
-            
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-              -d chat_id="${TELEGRAM_CHAT_ID}" \
-              -d text="${MESSAGE}" \
-              -d parse_mode="Markdown" \
-              -d disable_web_page_preview="true"
+
+            # 用 jq 打包成安全的 JSON，配合 MarkdownV2 解析
+            JSON_PAYLOAD=$(jq -n \
+              --arg chat_id "${TELEGRAM_CHAT_ID}" \
+              --arg text "$MSG" \
+              --argjson preview false \
+              '{chat_id: $chat_id, text: $text, parse_mode: "MarkdownV2", disable_web_page_preview: $preview}')
+
+            RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d "$JSON_PAYLOAD")
+
+            echo "TG API Response: $RESPONSE"
           fi
 
       - name: 16. 清理旧 Releases
