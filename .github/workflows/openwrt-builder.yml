@@ -1,296 +1,56 @@
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-#
+name: 🧪 Telegram 通知测试
 
-name: OpenWrt 云编译 (J1900 毕业精简版)
-
+# 触发条件：支持在 GitHub 页面上手动点击运行
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 16 * * *'  # 每天北京时间 00:00 自动运行
-
-permissions:
-  contents: write
-
-env:
-  REPO_URL: https://github.com/openwrt/openwrt
-  REPO_BRANCH: main
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: .config
-  DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
-  TZ: Asia/Shanghai
-  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
+  test-notify:
+    runs-on: ubuntu-latest
+    
+    # 模拟你原本编译脚本里的环境变量
+    env:
+      CPU_MODEL: "AMD EPYC 9V74 80-Core Processor"
+      CPU_CORES: "4"
+      CONFIG_FILE: ".config"
+      REPO_BRANCH: "main"
 
     steps:
-      - name: 1. 检出代码
-        uses: actions/checkout@v4
+    - name: 🚀 发送测试通知
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        NOW_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+        DISK_AVAIL=$(df -h / | awk 'NR==2 {print $4}')
 
-      - name: 2. 初始化编译环境
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo rm -rf /etc/apt/sources.list.d/*
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/lib/x86_64-linux-gnu/openblas
-          sudo docker image prune --all --force
-          sudo apt-get update
-          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-          sudo apt-get autoremove -y --purge
-          sudo apt-get clean
-          sudo timedatectl set-timezone "$TZ"
-          sudo mkdir -p /workdir
-          sudo chown $USER:$USER /workdir
-          df -h
+        read -r -d '' MSG << 'EOF' || true
+        🚀 *OpenWrt 自动编译测试* 🚀
 
-      - name: 3. 获取服务器环境信息 (GitHub Runner)
-        run: |
-          SERVER_CPU_MODEL=$(lscpu | grep 'Model name' | cut -f2 -d: | sed 's/^ //g')
-          SERVER_CORES=$(nproc)
-          echo "SERVER_CPU_MODEL=$SERVER_CPU_MODEL" >> $GITHUB_ENV
-          echo "SERVER_CORES=$SERVER_CORES" >> $GITHUB_ENV
-          echo "========= 编译服务器硬件详情 ========="
-          echo "CPU 型号: $SERVER_CPU_MODEL"
-          echo "CPU 核心数: $SERVER_CORES"
-          free -h
-          df -hT $PWD
-          echo "===================================="
+        📅 *时间*：$NOW_TIME
+        🖥️ *编译服务器信息*：
+          • CPU：${{ env.CPU_MODEL }}
+          • 核心数：${{ env.CPU_CORES }}
+          • 磁盘使用：$DISK_AVAIL 可用
 
-      - name: 🚀 发送编译开始通知 (Telegram)
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ env.TELEGRAM_CHAT_ID }}
-        run: |
-          if [ -n "${TELEGRAM_BOT_TOKEN}" ] && [ -n "${TELEGRAM_CHAT_ID}" ]; then
-            read -r -d '' MSG << 'EOF' || true
-          🚀 *OpenWrt J1900 毕业版编译开始* 🚀
+        📦 *配置文件*：${{ env.CONFIG_FILE }}
+        🔧 *源码分支*：${{ env.REPO_BRANCH }}
+        🌿 *项目仓库*：${{ github.repository }}
 
-          📅 *时间*：$(date '+%Y-%m-%d %H:%M:%S')
-          🖥️ *编译服务器信息*：
-            • CPU：${{ env.SERVER_CPU_MODEL }}
-            • 核心数：${{ env.SERVER_CORES }}
-            • 磁盘使用：$(df -h / | awk 'NR==2 {print $4}') 可用
+        这是一条测试消息，看到说明变量解析正常！
+        EOF
 
-          🔧 *源码分支*：${{ env.REPO_BRANCH }}
-          🌿 *项目仓库*：${{ github.repository }}
+        JSON_PAYLOAD=$(jq -n \
+          --arg chat_id "${TELEGRAM_CHAT_ID}" \
+          --arg text "$MSG" \
+          --argjson preview false \
+          '{
+            chat_id: $chat_id, 
+            text: $text, 
+            parse_mode: "Markdown", 
+            disable_web_page_preview: $preview
+          }')
 
-          编译进行中，请耐心等待\.\.\.
-          EOF
-
-            JSON_PAYLOAD=$(jq -n \
-              --arg chat_id "${TELEGRAM_CHAT_ID}" \
-              --arg text "$MSG" \
-              --argjson preview false \
-              '{chat_id: $chat_id, text: $text, parse_mode: "MarkdownV2", disable_web_page_preview: $preview}')
-
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-              -H "Content-Type: application/json" \
-              -d "$JSON_PAYLOAD"
-          fi
-
-      - name: 4. 克隆源码
-        working-directory: /workdir
-        run: |
-          git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-      - name: 5. 加载自定义 feeds (diy-part1)
-        run: |
-          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-          chmod +x $DIY_P1_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
-
-      - name: 6. 更新 feeds
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-
-      - name: 7. 安装 feeds
-        run: |
-          cd openwrt
-          ./scripts/feeds install -a
-
-      - name: 8. 加载自定义配置 (diy-part2)
-        run: |
-          [ -e files ] && mv files openwrt/files
-          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-          chmod +x $DIY_P2_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P2_SH
-
-      - name: 8.5 挂载 ccache 编译缓存机制 ⚡
-        uses: actions/cache@v4
-        with:
-          path: /workdir/openwrt/.ccache
-          key: openwrt-ccache-j1900-${{ env.REPO_BRANCH }}-${{ hashFiles('.config') }}
-          restore-keys: |
-            openwrt-ccache-j1900-${{ env.REPO_BRANCH }}-
-            openwrt-ccache-j1900-
-
-      - name: 9. 下载软件包
-        id: package
-        run: |
-          cd openwrt
-          make defconfig
-          make download -j8
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
-
-      - name: 10. 编译固件
-        id: compile
-        run: |
-          cd openwrt
-          export DEFAULT_SUBTARGET="generic"
-          export TOPDIR="/workdir/openwrt"
-          export CCACHE_DIR="$TOPDIR/.ccache"
-          export PATH="/usr/lib/ccache:$PATH"
-          
-          ccache -M 5G
-          
-          sed -i 's/CONFIG_CCACHE=n/CONFIG_CCACHE=y/g' .config 2>/dev/null || true
-          grep -q '^CONFIG_CCACHE=y' .config || echo 'CONFIG_CCACHE=y' >> .config
-          echo -e "$(nproc) 线程 开始编译"
-          
-          if make -j$(nproc); then
-            echo "高速编译成功"
-          elif make -j1; then
-            echo "单线程重试成功"
-          elif make -j1 V=s; then
-            echo "详细日志重试成功"
-          else
-            echo "编译失败"
-            exit 1
-          fi
-          
-          ccache -s
-          
-          echo "status=success" >> $GITHUB_OUTPUT
-          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-
-      - name: 11. 整理固件文件
-        id: organize
-        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
-        run: |
-          cd openwrt/bin/targets/*/*
-          rm -rf packages
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: 12. 上传固件到 Artifacts
-        uses: actions/upload-artifact@v4
-        if: steps.organize.outputs.status == 'success' && !cancelled()
-        with:
-          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: ${{ env.FIRMWARE }}
-
-      - name: 13. 生成发布标签 (Release Tag)
-        id: tag
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-        run: |
-          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-          touch release.txt
-          echo "J1900 毕业精简版固件 (OpenWrt Main)" >> release.txt
-          echo "默认后台地址: 10.1.1.1" >> release.txt
-          echo "云端编译 environment: ${{ env.SERVER_CPU_MODEL }} (${{ env.SERVER_CORES }}核)" >> release.txt
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: 14. 发布固件至 Releases
-        uses: softprops/action-gh-release@v2
-        if: steps.tag.outputs.status == 'success' && !cancelled()
-        with:
-          tag_name: ${{ steps.tag.outputs.release_tag }}
-          body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 15. Telegram 通知 🚀
-        if: always()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ env.TELEGRAM_CHAT_ID }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ -n "${TELEGRAM_BOT_TOKEN}" ] && [ -n "${TELEGRAM_CHAT_ID}" ]; then
-            if [ "${{ steps.compile.outputs.status }}" = "success" ]; then
-              STATUS="✅ 编译成功"
-            else
-              STATUS="❌ 编译失败"
-            fi
-            
-            if [ -f openwrt/.config ]; then
-              DEVICE=$(grep '^CONFIG_TARGET.*DEVICE.*=y' openwrt/.config | sed -r 's/.*DEVICE_(.*)=y/\1/')
-              [ -z "$DEVICE" ] && DEVICE="J1900 毕业版"
-            else
-              DEVICE="J1900 毕业版"
-            fi
-            
-            # 安全转义设备名称中的下划线或特殊字符
-            DEVICE=$(echo "$DEVICE" | sed 's/_/\\_/g' | sed 's/-/\\-/g' | sed 's/\./\\./g')
-
-            if [ "${{ steps.compile.outputs.status }}" = "success" ] && [ "${{ steps.tag.outputs.status }}" = "success" ]; then
-              RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.release_tag }}"
-              
-              read -r -d '' MSG << EOF || true
-            ✅ *J1900 毕业版编译成功！* ✅
-
-            📅 *完成时间*：$(date '+%Y-%m-%d %H:%M:%S')
-            📟 *目标设备*：${DEVICE}
-            📦 *项目仓库*：${{ github.repository }}
-            🌐 *管理地址*：10\.1\.1\.1
-            🔑 *默认密码*：无
-
-            🔗 [点击直达下载发布页面](${RELEASE_URL})
-            ⚠️ [点击查看详细编译日志](${RUN_URL})
-            EOF
-
-            else
-              read -r -d '' MSG << EOF || true
-            ❌ *J1900 毕业版编译失败！* ❌
-
-            📅 *失败时间*：$(date '+%Y-%m-%d %H:%M:%S')
-            📟 *目标设备*：${DEVICE}
-            📦 *项目仓库*：${{ github.repository }}
-            🔧 *失败状态*：${STATUS}
-
-            ⚠️ [点击此处紧急查看错误日志](${RUN_URL})
-            EOF
-            fi
-
-            # 用 jq 打包成安全的 JSON，配合 MarkdownV2 解析
-            JSON_PAYLOAD=$(jq -n \
-              --arg chat_id "${TELEGRAM_CHAT_ID}" \
-              --arg text "$MSG" \
-              --argjson preview false \
-              '{chat_id: $chat_id, text: $text, parse_mode: "MarkdownV2", disable_web_page_preview: $preview}')
-
-            RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-              -H "Content-Type: application/json" \
-              -d "$JSON_PAYLOAD")
-
-            echo "TG API Response: $RESPONSE"
-          fi
-
-      - name: 16. 清理旧 Releases
-        uses: dev-drprasad/delete-older-releases@v0.3.4
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-        with:
-          keep_latest: 3
-          delete_tags: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          -H "Content-Type: application/json" \
+          -d "$JSON_PAYLOAD"
