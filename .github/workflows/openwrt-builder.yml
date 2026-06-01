@@ -1,23 +1,87 @@
-name: Telegram Test Notify
+name: OpenWrt 云编译 (J1900 毕业精简版)
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 16 * * *'
+
+permissions:
+  contents: write
+
+env:
+  REPO_URL: https://github.com/openwrt/openwrt
+  REPO_BRANCH: main
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: .config
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Telegram Test Message
+
+      # ========================= 1. Checkout =========================
+      - name: 1. Checkout
+        uses: actions/checkout@v4
+
+      # ========================= 2. 初始化环境 =========================
+      - name: 2. Init env
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+
+      # ========================= 3. 获取机器信息 =========================
+      - name: 3. Server info
+        run: |
+          echo "SERVER_CPU=$(lscpu | grep 'Model name' | cut -d: -f2 | xargs)" >> $GITHUB_ENV
+          echo "SERVER_CORES=$(nproc)" >> $GITHUB_ENV
+
+      # ========================= 4. 🚀 Telegram 开始通知 =========================
+      - name: 4. Telegram Start Notify
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          echo "TOKEN_LEN=${#TELEGRAM_BOT_TOKEN}"
+          NOW_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+          MSG="🚀 OpenWrt 编译开始\n时间: ${NOW_TIME}\nCPU: ${SERVER_CPU}\n核心: ${SERVER_CORES}\n仓库: ${GITHUB_REPOSITORY}"
 
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="$MSG"
+
+      # ========================= 5. 编译逻辑 =========================
+      - name: 5. Compile
+        run: |
+          echo "开始编译..."
+          # 这里可以放你的 OpenWrt 编译命令
+          # 示例：
+          # ./scripts/feeds update -a
+          # ./scripts/feeds install -a
+          # make defconfig
+          # make -j$(nproc) V=s
+
+      # ========================= 6. 🚀 Telegram 结束通知 =========================
+      - name: 6. Telegram Finish Notify
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
           NOW_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 
-          MSG="🧪 TG 通知测试成功\n时间: $NOW_TIME\n仓库: $GITHUB_REPOSITORY"
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="✅ 编译成功"
+          else
+            STATUS="❌ 编译失败"
+          fi
+
+          MSG="${STATUS}\n时间: ${NOW_TIME}\n仓库: ${GITHUB_REPOSITORY}"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
