@@ -1,84 +1,26 @@
-name: TG 通知功能测试面板
+name: Telegram Test Notify
 
 on:
-  workflow_dispatch: # 支持在 GitHub 页面手动点击运行
+  workflow_dispatch:
 
 jobs:
-  test_notify:
+  test:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. 临时安装基础工具
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq
-
-      - name: 2. 模拟获取服务器环境信息
-        run: |
-          SERVER_CPU=$(lscpu | grep 'Model name' | cut -d: -f2 | xargs)
-          SERVER_CORES=$(nproc)
-          echo "SERVER_CPU=$SERVER_CPU" >> $GITHUB_ENV
-          echo "SERVER_CORES=$SERVER_CORES" >> $GITHUB_ENV
-
-      - name: 🚀 场景一：测试【开始编译】通知
+      - name: Telegram Test Message
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          echo "检查 Token 长度: ${#TELEGRAM_BOT_TOKEN}"
-          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
-            echo "❌ 错误：Secrets 变量未读取到，请检查仓库 Settings -> Secrets"
-            exit 1
-          fi
+          echo "TOKEN_LEN=${#TELEGRAM_BOT_TOKEN}"
 
           NOW_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 
-          # 采用普通的双引号字符串，规避 EOF 闭合与缩进困扰
-          MSG="🚀 OpenWrt 编译开始 (测试)
-时间: $NOW_TIME
-CPU: ${SERVER_CPU}
-核心: ${SERVER_CORES}
-仓库: $GITHUB_REPOSITORY"
-
-          echo "--- 准备发送的数据 ---"
-          echo "$MSG"
-          echo "----------------------"
-
-          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="$MSG")
-
-          echo "TG 接口返回原始数据: $RESPONSE"
-
-      - name: 模拟触发编译成功状态 (测试用)
-        id: compile_mock
-        run: echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: 🚀 场景二：测试【结束通知】
-        if: always()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          NOW_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-
-          # 这里直接模拟实际逻辑
-          if [ "${{ steps.compile_mock.outputs.status }}" = "success" ]; then
-            STATUS="✅ 编译成功 (测试)"
-          else
-            STATUS="❌ 编译失败 (测试)"
-          fi
-
-          MSG="$STATUS
+          MSG="🧪 TG 通知测试成功
 时间: $NOW_TIME
 仓库: $GITHUB_REPOSITORY"
 
-          echo "--- 准备发送的数据 ---"
-          echo "$MSG"
-          echo "----------------------"
-
-          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="$MSG")
-
-          echo "TG 接口返回原始数据: $RESPONSE"
+            -d text="$MSG"
