@@ -38,7 +38,8 @@ jobs:
           path: |
             cache/dl
             cache/ccache
-          key: ${{ runner.os }}-openwrt-${{ hashFiles('**/feeds.conf.default', '**/*.config') }}
+          # 关键修复：只对影响编译的根目录文件计算哈希，避免递归扫描全仓库导致超时
+          key: ${{ runner.os }}-openwrt-${{ hashFiles('feeds.conf.default', '.config', 'diy-part1.sh', 'diy-part2.sh') }}
           restore-keys: |
             ${{ runner.os }}-openwrt-
 
