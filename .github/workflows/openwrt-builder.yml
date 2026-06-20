@@ -81,13 +81,13 @@ jobs:
           # 执行自定义脚本 diy-part2.sh
           chmod +x ../$DIY_P2_SH && ../$DIY_P2_SH
 
-          # ==================== 🛠️ 强制移除 PassWall 与 Xray 核心 ====================
-          echo "正在检查并清理可能导致错误的 xray-core 及 PassWall 相关源码..."
+          # ==================== 🛠️ 强制精准剔除 PassWall 与 Xray ====================
+          echo "正在精准移除 xray-core 及 PassWall 相关组件..."
           rm -rf package/feeds/packages/net/xray-core
           rm -rf package/feeds/packages/net/xray-plugin
           rm -rf package/feeds/luci/applications/luci-app-passwall
           
-          # 在 .config 中彻底关闭它们，防止生成带有残存依赖的 Makefile 配置文件
+          # 在 .config 中强行将其关闭，防止配置文件残存产生编译死循环
           sed -i 's/CONFIG_PACKAGE_luci-app-passwall=y/# CONFIG_PACKAGE_luci-app-passwall is not set/g' .config
           sed -i 's/CONFIG_PACKAGE_xray-core=y/# CONFIG_PACKAGE_xray-core is not set/g' .config
           # ========================================================================
@@ -96,9 +96,7 @@ jobs:
           sed -i 's/CONFIG_CCACHE=n/CONFIG_CCACHE=y/g' .config || echo 'CONFIG_CCACHE=y' >> .config
 
           make defconfig
-          
-          # 优化点：使用 -j2 线程编译，既能利用缓存提速，又能防止多核导致内存溢出报错
-          make -j2 || make -j1 V=s
+          make -j$(nproc) || make -j1 V=s
           echo "status=success" >> $GITHUB_OUTPUT
 
           # 获取固件名称用于后续步骤
