@@ -92,32 +92,72 @@ jobs:
           sed -i 's/CONFIG_PACKAGE_xray-core=y/# CONFIG_PACKAGE_xray-core is not set/g' .config
           # ========================================================================
 
-          # 强制开启 ccache 配置
-          sed -i 's/CONFIG_CCACHE=n/CONFIG_CCACHE=y/g' .config || echo 'CONFIG_CCACHE=y' >> .config
+          # ==================== 🎛️ 动态注入网页端重置按键组件 ====================
+          echo "正在注入网页端一键恢复出厂设置组件..."
+          mkdir -p files/usr/libexec/rpcd
+          mkdir -p files/usr/share/rpcd/acl.d
+          mkdir -p files/usr/share/luci/menu.d
+          mkdir -p files/www/luci-static/resources/view/system
 
-          make defconfig
-          make -j$(nproc) || make -j1 V=s
-          echo "status=success" >> $GITHUB_OUTPUT
+          # 1. 注入后端执行脚本
+          cat << 'EOF' > files/usr/libexec/rpcd/web_reset
+          #!/bin/sh
+          case "$1" in
+              action)
+                  # 延迟 3 秒执行，确保前端网页成功接收到返回响应后再执行重置与重启
+                  (sleep 3; firstboot -y && reboot) &
+                  echo '{"status":"success","message":"System is resetting and rebooting..."}'
+                  ;;
+              *)
+                  echo '{"status":"error","message":"Invalid action"}'
+                  exit 1
+                  ;;
+          esac
+          EOF
+          chmod +x files/usr/libexec/rpcd/web_reset
 
-          # 获取固件名称用于后续步骤
-          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-          echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+          # 2. 注入 RPCD 的 ACL 权限认证（允许前端调用此脚本）
+          cat << 'EOF' > files/usr/share/rpcd/acl.d/web_reset.json
+          {
+              "web_reset": {
+                  "description": "Grant access to web reset script",
+                  "read": {
+                      "cgi-io": [ "exec" ]
+                  },
+                  "write": {
+                      "cgi-io": [ "exec" ]
+                  }
+              }
+          }
+          EOF
 
-      - name: 6. 上传固件到 Release
-        if: steps.compile.outputs.status == 'success'
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: Build_${{ env.FILE_DATE }}
-          files: openwrt-src/bin/targets/*/*/*.{img.gz,img,bin}
+          # 3. 注入 LuCI 导航菜单项 (挂载在“系统”菜单下)
+          cat << 'EOF' > files/usr/share/luci/menu.d/luci-mod-admin-reset.json
+          {
+              "admin/system/web_reset": {
+                  "title": "网页重置",
+                  "action": {
+                      "type": "view",
+                      "path": "system/web_reset"
+                  },
+                  "order": 99,
+                  "depends": {
+                      "acl": [ "web_reset" ]
+                  }
+              }
+          }
+          EOF
 
-      - name: 7. TG 通知 (编译结果)
-        if: always()
-        run: |
-          STATUS=$([[ "${{ steps.compile.outputs.status }}" == "success" ]] && echo "✅ 编译成功" || echo "❌ 编译失败")
-          MSG="${STATUS}%0A%0A📦 仓库: ${GITHUB_REPOSITORY}%0A🕒 时间: $(date '+%Y-%m-%d %H:%M:%S')%0A🔗 详情: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d text="$MSG"
+          # 4. 注入新版 LuCI 专属的前端 JS 渲染视图页面
+          cat << 'EOF' > files/www/luci-static/resources/view/system/web_reset.js
+          'use strict';
+          /* sysauth: admin */
+
+          return L.view.extend({
+              handleReset: function(ev) {
+                  if (!confirm(_('确定要将系统恢复出厂设置吗？此操作不可逆，将清除所有用户配置！')))
+                      return;
+
+                  L.ui.showModal(_('正在重置'), [
+                      E('p', { 'class': 'spinning' }, _('系统正在清除数据并重启，请在 1-2 分钟后尝试重新连接路由器...'))
+                  ]);
