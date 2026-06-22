@@ -38,7 +38,6 @@ jobs:
           path: |
             cache/dl
             cache/ccache
-          # 关键修复：只对影响编译的根目录文件计算哈希，避免递归扫描全仓库导致超时
           key: ${{ runner.os }}-openwrt-${{ hashFiles('feeds.conf.default', '.config', 'diy-part1.sh', 'diy-part2.sh') }}
           restore-keys: |
             ${{ runner.os }}-openwrt-
@@ -161,3 +160,75 @@ jobs:
                   L.ui.showModal(_('正在重置'), [
                       E('p', { 'class': 'spinning' }, _('系统正在清除数据并重启，请在 1-2 分钟后尝试重新连接路由器...'))
                   ]);
+              }
+          });
+          EOF
+
+          # ==================== 开始编译 ====================
+          make defconfig
+          make -j$(nproc) V=s
+
+      # ----- 新增：收集固件并准备上传 -----
+      - name: 6. 打包固件并生成 Release Tag
+        if: env.UPLOAD_FIRMWARE == 'true' && env.UPLOAD_RELEASE == 'true'
+        id: prepare_release
+        run: |
+          cd openwrt-src
+          # 查找固件目录（通常为 bin/targets/*/*）
+          TARGET_DIR=$(find bin/targets -type d -name "packages" -prune -o -type f -name "*-squashfs-combined*" -printf "%h\n" | head -1)
+          if [ -z "$TARGET_DIR" ]; then
+            echo "未找到固件文件，跳过上传"
+            echo "TAG_NAME=" >> $GITHUB_ENV
+            exit 0
+          fi
+          cd $TARGET_DIR
+          # 打包所有镜像、manifest 等（排除 packages 目录）
+          zip -r firmware.zip . -i "*.img" "*.vmdk" "*.vhdx" "*.vdi" "*.iso" "*.manifest"
+          # 记录大小
+          FILE_SIZE=$(stat -c%s firmware.zip)
+          echo "FIRMWARE_ZIP_SIZE=$FILE_SIZE" >> $GITHUB_ENV
+          # 生成 release tag
+          TAG_NAME="v$(date +'%Y%m%d-%H%M%S')"
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          # 将打包文件移到工作区根目录，方便后续上传
+          cp firmware.zip $GITHUB_WORKSPACE/firmware.zip
+
+      - name: 7. 创建 GitHub Release 并上传固件
+        if: env.UPLOAD_RELEASE == 'true' && env.TAG_NAME != ''
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: "OpenWrt J1900 精简版 ${{ env.TAG_NAME }}"
+          body: |
+            自动编译固件（J1900 毕业精简版）
+            - 编译时间：${{ github.run_id }}
+            - 固件大小：${{ env.FIRMWARE_ZIP_SIZE }} 字节
+            - 移除 PassWall 及 Xray 组件
+            - 已注入网页一键重置功能
+          files: firmware.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----- 新增：编译完成 TG 通知（成功/失败） -----
+      - name: 8. TG 通知 (编译结果)
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" == "success" ]; then
+            EMOJI="✅"
+            MSG="编译成功 🎉"
+            # 如果上传了 Release，附带下载链接
+            if [ "${{ env.UPLOAD_RELEASE }}" == "true" ] && [ "${{ env.TAG_NAME }}" != "" ]; then
+              DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/${{ env.TAG_NAME }}"
+              MSG="${MSG}%0A📦 下载地址: ${DOWNLOAD_URL}"
+            fi
+          else
+            EMOJI="❌"
+            MSG="编译失败，请检查日志"
+          fi
+          FULL_MSG="${EMOJI} OpenWrt 编译${MSG}%0A%0A📦 仓库: ${GITHUB_REPOSITORY}%0A🕒 时间: $(date '+%Y-%m-%d %H:%M:%S')%0A🔗 运行: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="$FULL_MSG"
