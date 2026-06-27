@@ -31,14 +31,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev jq
 
-      # 缓存 ccache 和 dl 目录（独立于源码目录）
       - name: 3. 挂载编译缓存 (ccache & dl)
         uses: actions/cache@v4
         with:
           path: |
             cache/dl
             cache/ccache
-          # 关键修复：只对影响编译的根目录文件计算哈希，避免递归扫描全仓库导致超时
           key: ${{ runner.os }}-openwrt-${{ hashFiles('feeds.conf.default', '.config', 'diy-part1.sh', 'diy-part2.sh') }}
           restore-keys: |
             ${{ runner.os }}-openwrt-
@@ -54,43 +52,24 @@ jobs:
       - name: 5. 克隆源码与编译
         id: compile
         run: |
-          # 克隆到独立目录 openwrt-src
           git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt-src
           cd openwrt-src
 
-          # 准备缓存目录（工作区根目录下的 cache 文件夹）
           mkdir -p ../cache/dl ../cache/ccache
-
-          # 软链接缓存目录到 OpenWrt 源码内
           ln -sf ../cache/dl dl
           ln -sf ../cache/ccache .ccache
 
-          # 启用 ccache
           export CCACHE_DIR="$PWD/.ccache"
           export PATH="/usr/lib/ccache:$PATH"
           ccache -M 10G
 
-          # 复制 feeds 配置
           [ -e ../$FEEDS_CONF ] && cp ../$FEEDS_CONF feeds.conf.default
-          # 执行自定义脚本 diy-part1.sh
           chmod +x ../$DIY_P1_SH && ../$DIY_P1_SH
-          # 更新 feeds
-          ./scripts/feeds update -a && ./scripts/feeds install -a
-          # 复制 .config
-          [ -e ../$CONFIG_FILE ] && cp ../$CONFIG_FILE .config
-          # 执行自定义脚本 diy-part2.sh
-          chmod +x ../$DIY_P2_SH && ../$DIY_P2_SH
-
-          # ==================== 🛠️ 强制精准剔除 PassWall 与 Xray ====================
-          echo "正在精准移除 xray-core 及 PassWall 相关组件..."
-          rm -rf package/feeds/packages/net/xray-core
-          rm -rf package/feeds/packages/net/xray-plugin
-          rm -rf package/feeds/luci/applications/luci-app-passwall
           
-          # 在 .config 中强行将其关闭，防止配置文件残存产生编译死循环
-          sed -i 's/CONFIG_PACKAGE_luci-app-passwall=y/# CONFIG_PACKAGE_luci-app-passwall is not set/g' .config
-          sed -i 's/CONFIG_PACKAGE_xray-core=y/# CONFIG_PACKAGE_xray-core is not set/g' .config
-          # ========================================================================
+          ./scripts/feeds update -a && ./scripts/feeds install -a
+          
+          [ -e ../$CONFIG_FILE ] && cp ../$CONFIG_FILE .config
+          chmod +x ../$DIY_P2_SH && ../$DIY_P2_SH
 
           # 强制开启 ccache 配置
           sed -i 's/CONFIG_CCACHE=n/CONFIG_CCACHE=y/g' .config || echo 'CONFIG_CCACHE=y' >> .config
@@ -99,7 +78,6 @@ jobs:
           make -j$(nproc) || make -j1 V=s
           echo "status=success" >> $GITHUB_OUTPUT
 
-          # 获取固件名称用于后续步骤
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
